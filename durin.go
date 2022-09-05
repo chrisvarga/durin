@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var version = "0.0.1"
+var version = "0.0.2"
 var port = 8045
 var data = read("dump.db")
 var mu sync.Mutex
@@ -29,7 +29,7 @@ func read(file string) map[string]string {
 }
 
 func store(file string, data map[string]string) {
-	s, _ := json.MarshalIndent(data, "", "    ")
+    s, _ := json.MarshalIndent(data, "", "  ")
 	err := os.WriteFile(file, append([]byte(s), "\n"...), 0644)
 	if err != nil {
 		fmt.Println(err)
@@ -38,7 +38,7 @@ func store(file string, data map[string]string) {
 
 func persist() {
 	for {
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 		d := read("dump.db")
 		mu.Lock()
 		eq := reflect.DeepEqual(d, data)
@@ -76,6 +76,9 @@ func parse_request(message string) string {
 	var value string
 
 	// Parse command
+	if len(message) < 4 {
+		return "(error): invalid syntax"
+	}
 	if message[0:4] != "set " && message[0:4] != "get " && message[0:4] != "del " {
 		return "(error): invalid syntax"
 	}
