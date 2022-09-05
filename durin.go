@@ -68,6 +68,19 @@ func route_request(command string, key string, value string) string {
 		delete(data, key)
 		return "OK"
 	}
+	if command == "key" {
+		if len(data) == 0 {
+			return "nil"
+		}
+		var response strings.Builder
+		response.WriteString("[")
+		for k := range data {
+			response.WriteString(fmt.Sprintf("'%s',", k))
+		}
+		res_string := response.String()
+		res_string = res_string[:len(res_string)-1]
+		return res_string + "]"
+	}
 	return "(error): invalid command"
 }
 
@@ -80,7 +93,7 @@ func parse_request(message string) string {
 	if len(message) < 4 {
 		return "(error): invalid syntax"
 	}
-	if message[0:4] != "set " && message[0:4] != "get " && message[0:4] != "del " {
+	if message[0:4] != "set " && message[0:4] != "get " && message[0:4] != "del " && message[0:4] != "keys" {
 		return "(error): invalid syntax"
 	}
 	command = message[0:3]
@@ -93,7 +106,7 @@ func parse_request(message string) string {
 		// get or del command, need to trim newline
 		key = strings.TrimSuffix(message[4:], "\n")
 	}
-	if key == "" {
+	if len(key) == 0 && command != "key" {
 		return "(error): invalid key"
 	}
 
