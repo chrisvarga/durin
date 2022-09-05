@@ -13,7 +13,9 @@ import (
 	"time"
 )
 
-var data = make(map[string]string)
+var version = "0.0.1"
+var port = 8045
+var data = read("dump.db")
 var mu sync.Mutex
 
 func read(file string) map[string]string {
@@ -37,12 +39,12 @@ func store(file string, data map[string]string) {
 func persist() {
 	for {
 		time.Sleep(5 * time.Second)
-		d := read("mine.db")
+		d := read("dump.db")
 		mu.Lock()
 		eq := reflect.DeepEqual(d, data)
 		if !eq {
-			store("mine.db", data)
-			log.Println("DB saved on disk")
+			store("dump.db", data)
+			log.Println(" * DB saved on disk")
 		}
 		mu.Unlock()
 	}
@@ -114,7 +116,7 @@ func handle_connection(conn net.Conn) {
 }
 
 func listen() {
-	listener, err := net.Listen("tcp", "localhost:8043")
+	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -131,6 +133,24 @@ func listen() {
 	}
 }
 
+func boot() {
+	fmt.Printf(`
+     ___
+    /\  \
+   /::\  \       Durin %s
+  /:/\:\  \
+ /:/  \:\  \
+/:/__/ \:\__\    Running in persistence mode
+\:\  \ /:/  /    Port: %d
+ \:\  /:/  /     PID:  %d
+  \:\/:/  /
+   \::/  /             https://github.com/chrisvarga/durin
+    \/__/
+
+`, version, 8045, os.Getpid())
+}
+
 func main() {
+	boot()
 	listen()
 }
