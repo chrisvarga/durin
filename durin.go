@@ -29,7 +29,7 @@ func read(file string) map[string]string {
 }
 
 func store(file string, data map[string]string) {
-    s, _ := json.MarshalIndent(data, "", "  ")
+	s, _ := json.MarshalIndent(data, "", "  ")
 	err := os.WriteFile(file, append([]byte(s), "\n"...), 0644)
 	if err != nil {
 		fmt.Println(err)
@@ -150,7 +150,7 @@ func boot() {
    \::/  /             https://github.com/chrisvarga/durin
     \/__/
 
-`, version, 8045, os.Getpid())
+`, version, port, os.Getpid())
 }
 
 func main() {
