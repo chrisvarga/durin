@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var version = "0.0.2"
+var version = "0.0.3"
 var port = 8045
 var data = read("keys.db")
 var mu sync.Mutex
