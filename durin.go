@@ -15,8 +15,9 @@ import (
 
 var version = "0.0.2"
 var port = 8045
-var data = read("dump.db")
+var data = read("keys.db")
 var mu sync.Mutex
+var durable bool
 
 func read(file string) map[string]string {
 	data, err := os.ReadFile(file)
@@ -39,11 +40,11 @@ func store(file string, data map[string]string) {
 func persist() {
 	for {
 		time.Sleep(1 * time.Second)
-		d := read("dump.db")
+		d := read("keys.db")
 		mu.Lock()
 		eq := reflect.DeepEqual(d, data)
 		if !eq {
-			store("dump.db", data)
+			store("keys.db", data)
 			log.Println(" * DB saved on disk")
 		}
 		mu.Unlock()
@@ -126,7 +127,6 @@ func listen() {
 	defer listener.Close()
 
 	log.Println("Listening at", listener.Addr().String())
-	go persist()
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -137,23 +137,33 @@ func listen() {
 }
 
 func boot() {
+	var mode string
+	if durable {
+		mode = "persistence"
+	} else {
+		mode = "ephemeral"
+	}
 	fmt.Printf(`
      ___
     /\  \
    /::\  \       Durin %s
   /:/\:\  \
  /:/  \:\  \
-/:/__/ \:\__\    Running in persistence mode
+/:/__/ \:\__\    Running in %s mode
 \:\  \ /:/  /    Port: %d
  \:\  /:/  /     PID:  %d
   \:\/:/  /
    \::/  /             https://github.com/chrisvarga/durin
     \/__/
 
-`, version, port, os.Getpid())
+`, version, mode, port, os.Getpid())
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "-p" {
+		durable = true
+		go persist()
+	}
 	boot()
 	listen()
 }
