@@ -54,21 +54,19 @@ func persist() {
 func route_request(command string, key string, value string) string {
 	mu.Lock()
 	defer mu.Unlock()
-	if command == "get" {
+	switch command {
+	case "get":
 		if val, ok := data[key]; ok {
 			return val
 		}
-		return "(error): key not found"
-	}
-	if command == "set" {
+		return "(error) key not found"
+	case "set":
 		data[key] = value
 		return "OK"
-	}
-	if command == "del" {
+	case "del":
 		delete(data, key)
 		return "OK"
-	}
-	if command == "key" {
+	case "key":
 		if len(data) == 0 {
 			return "nil"
 		}
@@ -80,8 +78,9 @@ func route_request(command string, key string, value string) string {
 		res_string := response.String()
 		res_string = res_string[:len(res_string)-1]
 		return res_string + "]"
+	default:
+		return "(error) invalid command"
 	}
-	return "(error): invalid command"
 }
 
 func parse_request(message string) string {
@@ -91,10 +90,10 @@ func parse_request(message string) string {
 
 	// Parse command
 	if len(message) < 4 {
-		return "(error): invalid syntax"
+		return "(error) invalid syntax"
 	}
 	if message[0:4] != "set " && message[0:4] != "get " && message[0:4] != "del " && message[0:4] != "keys" {
-		return "(error): invalid syntax"
+		return "(error) invalid command"
 	}
 	command = message[0:3]
 
@@ -107,14 +106,14 @@ func parse_request(message string) string {
 		key = strings.TrimSuffix(message[4:], "\n")
 	}
 	if len(key) == 0 && command != "key" {
-		return "(error): invalid key"
+		return "(error) invalid key"
 	}
 
 	// If we got this far, the rest of the message is the value.
 	if command == "set" {
 		value = strings.TrimSpace(message[len(command)+len(key)+2:])
 		if len(value) == 0 {
-			return "(error): invalid syntax"
+			return "(error) invalid value"
 		}
 	}
 	return route_request(command, key, value)
