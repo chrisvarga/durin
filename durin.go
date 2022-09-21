@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var version = "0.0.3"
+var version = "0.0.4"
 var port = 8045
 var data = read("keys.db")
 var mu sync.Mutex
@@ -66,18 +66,29 @@ func route_request(command string, key string, value string) string {
 	case "del":
 		delete(data, key)
 		return "OK"
-	case "key":
+	case "keys":
 		if len(data) == 0 {
 			return "nil"
 		}
-		var response strings.Builder
-		response.WriteString("[")
-		for k := range data {
-			response.WriteString(fmt.Sprintf("'%s',", k))
+		var buf strings.Builder
+		buf.WriteString("[")
+		if len(key) == 0 {
+			for k := range data {
+				buf.WriteString(fmt.Sprintf("'%s',", k))
+			}
+		} else {
+			for k := range data {
+				if strings.HasPrefix(k, key) {
+					buf.WriteString(fmt.Sprintf("'%s',", k))
+				}
+			}
 		}
-		res_string := response.String()
-		res_string = res_string[:len(res_string)-1]
-		return res_string + "]"
+		response := buf.String()
+		response = response[:len(response)-1]
+		if len(response) == 0 {
+			return "nil"
+		}
+		return response + "]"
 	default:
 		return "(error) invalid command"
 	}
@@ -92,20 +103,37 @@ func parse_request(message string) string {
 	if len(message) < 4 {
 		return "(error) invalid syntax"
 	}
-	if message[0:4] != "set " && message[0:4] != "get " && message[0:4] != "del " && message[0:4] != "keys" {
+	switch message[0:4] {
+	case "set ", "get ", "del ":
+		command = message[0:3]
+	case "keys":
+		command = message[0:4]
+	default:
 		return "(error) invalid command"
 	}
-	command = message[0:3]
 
 	// Parse key
-	if idx := strings.IndexByte(message[4:], ' '); idx >= 0 {
-		// set command
-		key = message[4 : idx+4]
+	if command == "keys" {
+		if idx := strings.IndexByte(message[4:], '\n'); idx >= 0 {
+			if idx >= 1 && message[0:5] != "keys " {
+				return "(error) invalid command"
+			}
+			key = strings.TrimSuffix(message[5:], "\n")
+			key = strings.ReplaceAll(key, " ", "")
+			if len(key) != 0 && len(key)+1 != idx {
+				return "(error) invalid keys argument"
+			}
+		}
 	} else {
-		// get or del command, need to trim newline
-		key = strings.TrimSuffix(message[4:], "\n")
+		if idx := strings.IndexByte(message[4:], ' '); idx >= 0 {
+			// set command
+			key = message[4 : idx+4]
+		} else {
+			// get or del command, need to trim newline
+			key = strings.TrimSuffix(message[4:], "\n")
+		}
 	}
-	if len(key) == 0 && command != "key" {
+	if len(key) == 0 && command != "keys" {
 		return "(error) invalid key"
 	}
 
