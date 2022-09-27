@@ -68,25 +68,25 @@ func route_request(command string, key string, value string) string {
 		return "OK"
 	case "keys":
 		if len(data) == 0 {
-			return "nil"
+			return "[]"
 		}
 		var buf strings.Builder
 		buf.WriteString("[")
 		if len(key) == 0 {
 			for k := range data {
-				buf.WriteString(fmt.Sprintf("'%s',", k))
+				buf.WriteString(fmt.Sprintf("\"%s\",", k))
 			}
 		} else {
 			for k := range data {
 				if strings.HasPrefix(k, key) {
-					buf.WriteString(fmt.Sprintf("'%s',", k))
+					buf.WriteString(fmt.Sprintf("\"%s\",", k))
 				}
 			}
 		}
 		response := buf.String()
 		response = response[:len(response)-1]
 		if len(response) == 0 {
-			return "nil"
+			return "[]"
 		}
 		return response + "]"
 	default:
