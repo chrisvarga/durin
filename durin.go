@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -15,7 +16,8 @@ import (
 
 var version = "0.0.4"
 var port = 8045
-var data = read("keys.db")
+var db = "keys.db"
+var data = read(db)
 var mu sync.Mutex
 var durable bool
 
@@ -40,11 +42,11 @@ func store(file string, data map[string]string) {
 func persist() {
 	for {
 		time.Sleep(1 * time.Second)
-		d := read("keys.db")
+		d := read(db)
 		mu.Lock()
 		eq := reflect.DeepEqual(d, data)
 		if !eq {
-			store("keys.db", data)
+			store(db, data)
 			log.Println(" * DB saved on disk")
 		}
 		mu.Unlock()
