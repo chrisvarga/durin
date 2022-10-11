@@ -1,1 +1,0 @@
-# Durin - durable index
