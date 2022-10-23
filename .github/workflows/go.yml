@@ -23,6 +23,6 @@ jobs:
 
     - name: Test
       run: |
-        go run durin.go &
+        go run durin.go -d db.json &
         GO111MODULE=off go test -bench=. ./test/parse
         GO111MODULE=off go test -bench=. ./test/perf
