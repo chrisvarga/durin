@@ -28,7 +28,10 @@ func read(file string) map[string]string {
 		return make(map[string]string)
 	}
 	var result map[string]string
-	Json.Unmarshal([]byte(string(data)), &result)
+	err = Json.Unmarshal([]byte(string(data)), &result)
+	if err != nil {
+		log.Fatal("Error reading database file:", err)
+	}
 	return result
 }
 
