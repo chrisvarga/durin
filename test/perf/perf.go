@@ -1,7 +1,6 @@
 package perf
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"net"
