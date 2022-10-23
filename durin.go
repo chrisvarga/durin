@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
+	Json "encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var version = "0.0.5"
+var version = "0.0.6"
 var port = 8045
 var db string
 var data = make(map[string]string)
@@ -28,13 +28,13 @@ func read(file string) map[string]string {
 		return make(map[string]string)
 	}
 	var result map[string]string
-	json.Unmarshal([]byte(string(data)), &result)
+	Json.Unmarshal([]byte(string(data)), &result)
 	return result
 }
 
 // Store the database to disk in json format.
 func store(file string, data map[string]string) {
-	s, _ := json.MarshalIndent(data, "", "  ")
+	s, _ := Json.MarshalIndent(data, "", "  ")
 	err := os.WriteFile(file, append([]byte(s), "\n"...), 0644)
 	if err != nil {
 		fmt.Println(err)
@@ -108,6 +108,28 @@ func keys(prefix string) string {
 	return response + "]"
 }
 
+// Return a json object of key/values of all keys starting with the prefix.
+func json(prefix string) string {
+	if len(data) == 0 {
+		// This means the database is completely empty.
+		return "{}"
+	}
+	var buf strings.Builder
+	buf.WriteString("{")
+	for k, v := range data {
+		if strings.HasPrefix(k, prefix) {
+			buf.WriteString(fmt.Sprintf("\"%s\":\"%s\",", k, v))
+		}
+	}
+	response := buf.String()
+	response = response[:len(response)-1]
+	if len(response) == 0 {
+		// This means there were no keys starting with the specified prefix.
+		return "{}"
+	}
+	return response + "}"
+}
+
 // Route the command and arguments to the appropriate function.
 func route(command string, key string, value string) string {
 	mu.Lock()
@@ -121,6 +143,8 @@ func route(command string, key string, value string) string {
 		return del(key)
 	case "keys":
 		return keys(key)
+	case "json":
+		return json(key)
 	default:
 		return "(error) invalid syntax"
 	}
@@ -132,6 +156,7 @@ func route(command string, key string, value string) string {
 //   get  <key>
 //   del  <key>
 //   keys [prefix]
+//   json <prefix>
 func parse(message string) string {
 	var command string
 	var key string
@@ -144,7 +169,7 @@ func parse(message string) string {
 	switch message[0:4] {
 	case "set ", "get ", "del ":
 		command = message[0:3]
-	case "keys":
+	case "keys", "json":
 		command = message[0:4]
 	default:
 		return "(error) invalid syntax"
@@ -166,6 +191,13 @@ func parse(message string) string {
 				// they never specified a non-empty prefix, i.e. only spaces.
 				return "(error) invalid keys prefix"
 			}
+		}
+	} else if command == "json" {
+		// Trim trailing newline from the key.
+		if idx := strings.IndexByte(message[5:], ' '); idx >= 0 {
+			key = message[5 : idx+5]
+		} else {
+			key = strings.TrimSuffix(message[5:], "\n")
 		}
 	} else {
 		if idx := strings.IndexByte(message[4:], ' '); idx >= 0 {

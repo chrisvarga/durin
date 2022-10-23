@@ -23,6 +23,7 @@ set  <key> <value>  // set a key to a value
 get  <key>          // get the value of a key
 del  <key>          // delete a key and its value
 keys [prefix]       // display keys starting with prefix
+json <prefix>       // display keys and values of keys starting with prefix
 ```
 
 ## Examples
@@ -42,4 +43,10 @@ keys
 ["foo","spam"]
 keys f
 ["foo"]
+set hero:pippin fool
+OK
+set hero:gandalf wise
+OK
+json hero
+{"hero:pippin":"fool","hero:gandalf":"wise"}
 ```
