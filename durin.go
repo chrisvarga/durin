@@ -192,13 +192,15 @@ func parse(message string) string {
 }
 
 // TODO: experimental clustering
-func forward(node string, message string) {
-	conn, err := net.Dial("tcp", node)
-	if err != nil {
-		log.Fatal("(error) failed to connect to node at ", node)
+func forward(message string) {
+	for _, node := range cluster {
+		conn, err := net.Dial("tcp", node)
+		if err != nil {
+			log.Println("(error) failed to connect to node at ", node)
+		}
+		defer conn.Close()
+		fmt.Fprintf(conn, message)
 	}
-	defer conn.Close()
-	conn.Write([]byte(message + "\n"))
 }
 
 // Handle a request. All requests must be terminated by a newline.
@@ -211,13 +213,9 @@ func handle(conn net.Conn) {
 			conn.Close()
 			return
 		}
-		// Terminate all responses with a newline for consistency.
-		conn.Write([]byte(parse(string(message)) + "\n"))
-		/*
-			for _, node := range cluster {
-				go forward(node, message)
-			}
-		*/
+		// We terminate all responses with a newline.
+		fmt.Fprintf(conn, "%s\n", parse(string(message)))
+		// go forward(message)
 	}
 }
 
