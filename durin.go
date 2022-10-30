@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	Json "encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -13,12 +14,12 @@ import (
 	"time"
 )
 
-var version = "0.0.6"
+var version = "0.0.7"
+var host = "localhost"
 var port = 8045
 var db string
 var data = make(map[string]string)
 var mu sync.Mutex
-var durable bool
 var cluster []string
 
 // Read the database file into memory.
@@ -227,6 +228,7 @@ func parse(message string) string {
 }
 
 // TODO: experimental clustering
+// cluster = append(cluster, "localhost:8046")
 func forward(message string) {
 	for _, node := range cluster {
 		conn, err := net.Dial("tcp", node)
@@ -258,7 +260,7 @@ func handle(conn net.Conn) {
 // We listen on the private loopback interface (i.e. localhost).
 // Right now we just spin up a lightweight go routine for each connection.
 func listen() {
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -274,13 +276,29 @@ func listen() {
 	}
 }
 
+// Parse command line arguments and set the database config accordingly.
+func flags() {
+	d := flag.String("d", "", "specifies a database file, enabling durable mode")
+	b := flag.String("b", host, "specifies the bind address")
+	p := flag.Int("p", port, "specifies the port on which to listen")
+	flag.Parse()
+
+	host = *b
+	port = *p
+	if *d != "" {
+		db = *d
+		data = read(db)
+		go persist()
+	}
+}
+
 // Display bootup information such as version, mode, port, and pid.
 func boot() {
 	var mode string
-	if durable {
-		mode = "durable"
-	} else {
+	if db == "" {
 		mode = "ephemeral"
+	} else {
+		mode = "durable"
 	}
 	fmt.Printf(`
      ___
@@ -300,13 +318,7 @@ func boot() {
 
 // Ye olde main.
 func main() {
-	// cluster = append(cluster, "localhost:8046")
-	if len(os.Args) > 2 && os.Args[1] == "-d" {
-		durable = true
-		db = os.Args[2]
-		data = read(db)
-		go persist()
-	}
+	flags()
 	boot()
 	listen()
 }
