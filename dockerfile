@@ -7,4 +7,4 @@ FROM alpine:latest
 WORKDIR /app
 RUN apk add gcompat
 COPY --from=build /durin ./durin
-ENTRYPOINT ["/app/durin", "-d", "/app/db"]
+ENTRYPOINT ["/app/durin", "-d", "/app/db", "-b", "0.0.0.0"]
