@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  distro:
+    image: docker.io/chrisvarga/durin:latest
+    container_name: durin
+    volumes:
+      - durin:/app
+    ports:
+      - "127.0.0.1:8045:8045"
+    entrypoint: /app/durin -b 0.0.0.0 -d /app/db
+
+volumes:
+  durin:
+    name: durin
