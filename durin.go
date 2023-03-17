@@ -173,7 +173,8 @@ func listen() {
 	http.HandleFunc("/api/v1/set", set)
 	http.HandleFunc("/api/v1/get", get)
 	http.HandleFunc("/api/v1/del", del)
-	log.Fatal(http.ListenAndServe(":80", nil))
+	addr := fmt.Sprintf("%s:%d", host, port)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
 // Parse command line arguments and set the database config accordingly.
