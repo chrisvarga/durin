@@ -17,14 +17,14 @@ var version = "1.0.0"
 var host = "localhost"
 var port = 8045
 var db string
-var data = make(map[string]string)
+var data = make(map[string]interface{})
 var mu sync.Mutex
 var cluster []string
 
 // Durin HTTP API structures
 type DurinRequest struct {
-	Key   string `json:"key"`
-	Value string `json:"value,omitempty"`
+	Key   string      `json:"key"`
+	Value interface{} `json:"value,omitempty"`
 }
 
 type DurinError struct {
@@ -33,8 +33,8 @@ type DurinError struct {
 }
 
 type DurinSuccess struct {
-	Key   string `json:"key,omitempty"`
-	Value string `json:"value,omitempty"`
+	Key   string      `json:"key,omitempty"`
+	Value interface{} `json:"value,omitempty"`
 }
 
 type DurinResponse struct {
@@ -42,13 +42,24 @@ type DurinResponse struct {
 	Error *DurinError   `json:"error,omitempty"`
 }
 
+func isNil(i interface{}) bool {
+	if i == nil {
+		return true
+	}
+	switch reflect.TypeOf(i).Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Array, reflect.Chan, reflect.Slice:
+		return reflect.ValueOf(i).IsNil()
+	}
+	return false
+}
+
 // Read the database file into memory.
-func read(file string) map[string]string {
+func read(file string) map[string]interface{} {
 	data, err := os.ReadFile(file)
 	if err != nil {
-		return make(map[string]string)
+		return make(map[string]interface{})
 	}
-	var result map[string]string
+	var result map[string]interface{}
 	err = json.Unmarshal([]byte(string(data)), &result)
 	if err != nil {
 		log.Fatal("Error reading database file:", err)
@@ -57,7 +68,7 @@ func read(file string) map[string]string {
 }
 
 // Store the database to disk in json format.
-func store(file string, data map[string]string) {
+func store(file string, data map[string]interface{}) {
 	s, _ := json.MarshalIndent(data, "", "  ")
 	err := os.WriteFile(file, append([]byte(s), "\n"...), 0644)
 	if err != nil {
@@ -90,6 +101,9 @@ func Unpack(r *http.Request) *DurinRequest {
 		log.Fatal(err)
 	}
 	err = json.Unmarshal(body, &durin)
+	if err != nil {
+		log.Println(err)
+	}
 
 	return &durin
 }
@@ -123,15 +137,16 @@ func set(w http.ResponseWriter, r *http.Request) {
 	var res DurinResponse
 	key, value := req.Key, req.Value
 
-	if value != "" && key != "" {
+	if key == "" || value == "" || isNil(value) {
+		res.Error = &DurinError{
+			Code:    500,
+			Message: "invalid parameters for set request",
+		}
+		log.Printf("value:'%v'\n", value)
+	} else {
 		data[key] = value
 		res.Data = &DurinSuccess{
 			Key: key,
-		}
-	} else {
-		res.Error = &DurinError{
-			Code:    500,
-			Message: "non-empty key and value strings required for set request",
 		}
 	}
 
