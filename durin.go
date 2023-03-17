@@ -1,26 +1,46 @@
 package main
 
 import (
-	"bufio"
-	Json "encoding/json"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
-	"net"
+	"net/http"
 	"os"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 )
 
-var version = "0.0.7"
+var version = "1.0.0"
 var host = "localhost"
 var port = 8045
 var db string
 var data = make(map[string]string)
 var mu sync.Mutex
 var cluster []string
+
+// Durin HTTP API structures
+type DurinRequest struct {
+	Key   string `json:"key"`
+	Value string `json:"value,omitempty"`
+}
+
+type DurinError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type DurinSuccess struct {
+	Key   string `json:"key,omitempty"`
+	Value string `json:"value,omitempty"`
+}
+
+type DurinResponse struct {
+	Data  *DurinSuccess `json:"data,omitempty"`
+	Error *DurinError   `json:"error,omitempty"`
+}
 
 // Read the database file into memory.
 func read(file string) map[string]string {
@@ -29,7 +49,7 @@ func read(file string) map[string]string {
 		return make(map[string]string)
 	}
 	var result map[string]string
-	err = Json.Unmarshal([]byte(string(data)), &result)
+	err = json.Unmarshal([]byte(string(data)), &result)
 	if err != nil {
 		log.Fatal("Error reading database file:", err)
 	}
@@ -38,7 +58,7 @@ func read(file string) map[string]string {
 
 // Store the database to disk in json format.
 func store(file string, data map[string]string) {
-	s, _ := Json.MarshalIndent(data, "", "  ")
+	s, _ := json.MarshalIndent(data, "", "  ")
 	err := os.WriteFile(file, append([]byte(s), "\n"...), 0644)
 	if err != nil {
 		fmt.Println(err)
@@ -61,219 +81,99 @@ func persist() {
 	}
 }
 
-// Get a key from the database.
-func get(key string) string {
-	if value, ok := data[key]; ok {
-		return value
+// Unpack the request body into a DurinRequest
+func Unpack(r *http.Request) *DurinRequest {
+	var durin DurinRequest
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return "(error) key not found"
+	err = json.Unmarshal(body, &durin)
+
+	return &durin
+}
+
+// Get a key from the database.
+func get(w http.ResponseWriter, r *http.Request) {
+	key := Unpack(r).Key
+	var res DurinResponse
+
+	if value, ok := data[key]; ok {
+		res.Data = &DurinSuccess{
+			Value: value,
+		}
+	} else {
+		res.Error = &DurinError{
+			Code:    500,
+			Message: "key not found",
+		}
+	}
+
+	b, err := json.Marshal(res)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Fprintf(w, "%s\n", string(b))
 }
 
 // Set a key in the database to a value.
-func set(key string, value string) string {
-	data[key] = value
-	return "OK"
+func set(w http.ResponseWriter, r *http.Request) {
+	req := Unpack(r)
+	var res DurinResponse
+	key, value := req.Key, req.Value
+
+	if value != "" && key != "" {
+		data[key] = value
+		res.Data = &DurinSuccess{
+			Key: key,
+		}
+	} else {
+		res.Error = &DurinError{
+			Code:    500,
+			Message: "non-empty key and value strings required for set request",
+		}
+	}
+
+	b, err := json.Marshal(res)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Fprintf(w, "%s\n", string(b))
 }
 
 // Delete a key and its value from the database.
-func del(key string) string {
-	delete(data, key)
-	return "OK"
-}
+func del(w http.ResponseWriter, r *http.Request) {
+	key := Unpack(r).Key
+	var res DurinResponse
 
-// Return a list of the keys in the database.
-// If they specified a prefix argument, only return the keys starting with it.
-func keys(prefix string) string {
-	if len(data) == 0 {
-		// This means the database is completely empty.
-		return "[]"
-	}
-	var buf strings.Builder
-	buf.WriteString("[")
-	if len(prefix) == 0 {
-		// If they didn't specify a prefix, just return all the keys.
-		for k := range data {
-			buf.WriteString(fmt.Sprintf("\"%s\",", k))
+	if key != "" {
+		delete(data, key)
+		res.Data = &DurinSuccess{
+			Key: key,
 		}
 	} else {
-		// If they specified a prefix, only return the keys starting with it.
-		for k := range data {
-			if strings.HasPrefix(k, prefix) {
-				buf.WriteString(fmt.Sprintf("\"%s\",", k))
-			}
+		res.Error = &DurinError{
+			Code:    500,
+			Message: "del request requires key",
 		}
 	}
-	response := buf.String()
-	response = response[:len(response)-1]
-	if len(response) == 0 {
-		// This means there were no keys starting with the specified prefix.
-		return "[]"
-	}
-	return response + "]"
-}
 
-// Return a json object of key/values of all keys starting with the prefix.
-func json(prefix string) string {
-	if len(data) == 0 {
-		// This means the database is completely empty.
-		return "{}"
+	b, err := json.Marshal(res)
+	if err != nil {
+		log.Fatal(err)
 	}
-	var buf strings.Builder
-	buf.WriteString("{")
-	for k, v := range data {
-		if strings.HasPrefix(k, prefix) {
-			buf.WriteString(fmt.Sprintf("\"%s\":\"%s\",", k, v))
-		}
-	}
-	response := buf.String()
-	response = response[:len(response)-1]
-	if len(response) == 0 {
-		// This means there were no keys starting with the specified prefix.
-		return "{}"
-	}
-	return response + "}"
-}
-
-// Route the command and arguments to the appropriate function.
-func route(command string, key string, value string) string {
-	mu.Lock()
-	defer mu.Unlock()
-	switch command {
-	case "get":
-		return get(key)
-	case "set":
-		return set(key, value)
-	case "del":
-		return del(key)
-	case "keys":
-		return keys(key)
-	case "json":
-		return json(key)
-	default:
-		return "(error) invalid syntax"
-	}
-}
-
-// Parse the message into a valid command, key, and value.
-// Syntax:
-//   set  <key> <value>
-//   get  <key>
-//   del  <key>
-//   keys [prefix]
-//   json <prefix>
-func parse(message string) string {
-	var command string
-	var key string
-	var value string
-
-	// Parse command.
-	if len(message) < 4 {
-		return "(error) invalid syntax"
-	}
-	switch message[0:4] {
-	case "set ", "get ", "del ":
-		command = message[0:3]
-	case "keys", "json":
-		command = message[0:4]
-	default:
-		return "(error) invalid syntax"
-	}
-
-	// Parse key.
-	if command == "keys" {
-		// The prefix argument is optional for the keys command; check for it.
-		if idx := strings.IndexByte(message[4:], '\n'); idx >= 0 {
-			if idx >= 1 && message[0:5] != "keys " {
-				// This means the command started with 'keys' but wasn't valid.
-				// For example, they sent something like 'keysasdflsdf'.
-				return "(error) invalid command; did you mean 'keys'?"
-			}
-			key = strings.TrimSuffix(message[5:], "\n")
-			key = strings.ReplaceAll(key, " ", "")
-			if len(key) != 0 && len(key)+1 != idx {
-				// This means there was a space after the keys command, but
-				// they never specified a non-empty prefix, i.e. only spaces.
-				return "(error) invalid keys prefix"
-			}
-		}
-	} else if command == "json" {
-		// Trim trailing newline from the key.
-		if idx := strings.IndexByte(message[5:], ' '); idx >= 0 {
-			key = message[5 : idx+5]
-		} else {
-			key = strings.TrimSuffix(message[5:], "\n")
-		}
-	} else {
-		if idx := strings.IndexByte(message[4:], ' '); idx >= 0 {
-			// For the set command, we need to remove a trailing space from the key.
-			key = message[4 : idx+4]
-		} else {
-			// For get or del, we need to trim a trailing newline from the key.
-			key = strings.TrimSuffix(message[4:], "\n")
-		}
-	}
-	// A key is required for all commands other than the keys command.
-	if len(key) == 0 && command != "keys" {
-		return "(error) invalid syntax"
-	}
-
-	// If we got this far, the rest of the message is the value for set.
-	if command == "set" {
-		value = strings.TrimSpace(message[len(command)+len(key)+2:])
-		if len(value) == 0 {
-			return "(error) value required for set command"
-		}
-	}
-	return route(command, key, value)
-}
-
-// TODO: experimental clustering
-// cluster = append(cluster, "localhost:8046")
-func forward(message string) {
-	for _, node := range cluster {
-		conn, err := net.Dial("tcp", node)
-		if err != nil {
-			log.Println("(error) failed to connect to node at ", node)
-		}
-		defer conn.Close()
-		fmt.Fprintf(conn, message)
-	}
-}
-
-// Handle a request. All requests must be terminated by a newline.
-// We keep looping so they can reuse the connection until they kill it.
-func handle(conn net.Conn) {
-	reader := bufio.NewReader(conn)
-	for {
-		message, err := reader.ReadString('\n')
-		if err != nil {
-			conn.Close()
-			return
-		}
-		// We terminate all responses with a newline.
-		fmt.Fprintf(conn, "%s\n", parse(string(message)))
-		// go forward(message)
-	}
+	fmt.Fprintf(w, "%s\n", string(b))
 }
 
 // Listen on the port specified by the port variable at the top of this file.
 // We listen on the private loopback interface (i.e. localhost).
 // Right now we just spin up a lightweight go routine for each connection.
 func listen() {
-	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer listener.Close()
-
-	log.Println("Listening at", listener.Addr().String())
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Fatal(err)
-		}
-		go handle(conn)
-	}
+	http.HandleFunc("/api/v1/set", set)
+	http.HandleFunc("/api/v1/get", get)
+	http.HandleFunc("/api/v1/del", del)
+	log.Fatal(http.ListenAndServe(":80", nil))
 }
 
 // Parse command line arguments and set the database config accordingly.
