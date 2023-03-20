@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	Json "encoding/json"
+	js "encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -29,7 +29,7 @@ func read(file string) map[string]string {
 		return make(map[string]string)
 	}
 	var result map[string]string
-	err = Json.Unmarshal([]byte(string(data)), &result)
+	err = js.Unmarshal([]byte(string(data)), &result)
 	if err != nil {
 		log.Fatal("Error reading database file:", err)
 	}
@@ -38,7 +38,7 @@ func read(file string) map[string]string {
 
 // Store the database to disk in json format.
 func store(file string, data map[string]string) {
-	s, _ := Json.MarshalIndent(data, "", "  ")
+	s, _ := js.MarshalIndent(data, "", "  ")
 	err := os.WriteFile(file, append([]byte(s), "\n"...), 0644)
 	if err != nil {
 		fmt.Println(err)
