@@ -1,7 +1,5 @@
-durin:
+durin: durin.go
 	go build durin.go
-
-all: durin
 
 install:
 	cp durin /usr/local/bin
