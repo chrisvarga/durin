@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha512"
+	"crypto/subtle"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -20,6 +22,14 @@ var db string
 var data = make(map[string]interface{})
 var mu sync.Mutex
 var cluster []string
+var auth Authentication
+var cert = "durin.crt"
+var tlskey = "durin.key"
+
+type Authentication struct {
+	user string
+	pass string
+}
 
 // Durin HTTP API structures
 type DurinRequest struct {
@@ -92,8 +102,28 @@ func persist() {
 	}
 }
 
+func verify(r *http.Request) bool {
+	username, password, ok := r.BasicAuth()
+	if !ok {
+		return false
+	}
+
+	userHash := sha512.Sum512([]byte(username))
+	passHash := sha512.Sum512([]byte(password))
+	expectedUserHash := sha512.Sum512([]byte(auth.user))
+	expectedPassHash := sha512.Sum512([]byte(auth.pass))
+
+	userMatch := (subtle.ConstantTimeCompare(userHash[:], expectedUserHash[:]) == 1)
+	passMatch := (subtle.ConstantTimeCompare(passHash[:], expectedPassHash[:]) == 1)
+
+	if !userMatch || !passMatch {
+		return false
+	}
+	return true
+}
+
 // Unpack the request body into a DurinRequest
-func Unpack(r *http.Request) *DurinRequest {
+func unpack(r *http.Request) *DurinRequest {
 	var durin DurinRequest
 
 	body, err := io.ReadAll(r.Body)
@@ -110,7 +140,12 @@ func Unpack(r *http.Request) *DurinRequest {
 
 // Get a key from the database.
 func get(w http.ResponseWriter, r *http.Request) {
-	key := Unpack(r).Key
+	if !verify(r) {
+		w.Header().Set("WWW-Authenticate", `Basic realm=restricted", charset="UTF-8"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	key := unpack(r).Key
 	var res DurinResponse
 
 	if value, ok := data[key]; ok {
@@ -133,7 +168,12 @@ func get(w http.ResponseWriter, r *http.Request) {
 
 // Set a key in the database to a value.
 func set(w http.ResponseWriter, r *http.Request) {
-	req := Unpack(r)
+	if !verify(r) {
+		w.Header().Set("WWW-Authenticate", `Basic realm=restricted", charset="UTF-8"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	req := unpack(r)
 	var res DurinResponse
 	key, value := req.Key, req.Value
 
@@ -159,7 +199,12 @@ func set(w http.ResponseWriter, r *http.Request) {
 
 // Delete a key and its value from the database.
 func del(w http.ResponseWriter, r *http.Request) {
-	key := Unpack(r).Key
+	if !verify(r) {
+		w.Header().Set("WWW-Authenticate", `Basic realm=restricted", charset="UTF-8"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	key := unpack(r).Key
 	var res DurinResponse
 
 	if key != "" {
@@ -189,7 +234,8 @@ func listen() {
 	http.HandleFunc("/api/v1/get", get)
 	http.HandleFunc("/api/v1/del", del)
 	addr := fmt.Sprintf("%s:%d", host, port)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	// log.Fatal(http.ListenAndServe(addr, nil))
+	log.Fatal(http.ListenAndServeTLS(addr, cert, tlskey, nil))
 }
 
 // Parse command line arguments and set the database config accordingly.
@@ -197,10 +243,14 @@ func flags() {
 	d := flag.String("d", "", "specifies a database file, enabling durable mode")
 	b := flag.String("b", host, "specifies the bind address")
 	p := flag.Int("p", port, "specifies the port on which to listen")
+	c := flag.String("c", cert, "specifies the certificate for https")
+	k := flag.String("k", tlskey, "specifies the key for https")
 	flag.Parse()
 
 	host = *b
 	port = *p
+	cert = *c
+	tlskey = *k
 	if *d != "" {
 		db = *d
 		data = read(db)
@@ -234,6 +284,8 @@ func boot() {
 
 // Ye olde main.
 func main() {
+	auth.user = os.Getenv("DURIN_USER")
+	auth.pass = os.Getenv("DURIN_PASS")
 	flags()
 	boot()
 	listen()
